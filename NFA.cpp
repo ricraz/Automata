@@ -51,7 +51,7 @@ public:
 			temp->push_back(s);
 			outgoing[c] = temp;
 		} else { //checks if link already exists, if so skips adding
-			for (auto i : outgoing[c]) {
+			for (auto i : (*outgoing[c])) {
 				if (i == s) {
 					return;
 				}
@@ -79,7 +79,7 @@ public:
 			temp->push_back(s);
 			incoming[c] = temp;
 		} else { //checks if link already exists, if so skips adding
-			for (auto i : incoming[c]) {
+			for (auto i : (*incoming[c])) {
 				if (i == s) {
 					return;
 				}
