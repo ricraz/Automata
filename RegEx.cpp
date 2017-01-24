@@ -5,9 +5,9 @@ using namespace std;
 
 class SyntaxTree {
 	char oper;
-	SyntaxTree * left = NULL;
-	SyntaxTree * right = NULL;
-	SyntaxTree * parent = NULL;
+	SyntaxTree * left = nullptr;
+	SyntaxTree * right = nullptr;
+	SyntaxTree * parent = nullptr;
 	public:
 		SyntaxTree(char leaf) {
 			oper = leaf;
@@ -20,6 +20,10 @@ class SyntaxTree {
 			oper = op;
 			left = lPointer;
 			right = rPointer;
+		}
+		~SyntaxTree(){
+			delete left;
+			delete right;
 		}
 		SyntaxTree * getLeft() {
 			return left;
@@ -38,75 +42,79 @@ void printSyntaxTree(SyntaxTree * A) {
 	}
     if ((A->getLeft() || A->getRight()) && A->getOp() != '*') { //can we get rid of A->getRight() here? and below
         cout << "(";
-    }
+	}
 	printSyntaxTree(A->getLeft());
 	cout << A->getOp();
 	printSyntaxTree(A->getRight());
     if ((A->getLeft() || A->getRight()) && A->getOp() != '*') {
         cout << ")";
-    }
+	}
 }
 
 SyntaxTree * makeSyntaxTree (string A) {
 	int bracketCount = 0;
-	int index = 0;
-	SyntaxTree * newTree = NULL;
-	SyntaxTree * newTree2 = NULL;
+	int ind = 0;
+	SyntaxTree * newTree = nullptr;
+	SyntaxTree * newTree2 = nullptr;
 	
 	if (A.length() == 1) {
 		newTree = new SyntaxTree(A[0]);
 		return newTree;
 	} else if (A.length() == 0){
-		return nullptr;		//does this work?
+		return nullptr;
 	} else {
 		if (A[0]=='(') {
 			bracketCount ++;
-			index ++;
+			ind ++;
 			while (bracketCount > 0) { //fix this to be safe for malformed regular expression
-				if (A[index]==')') {
+				if (A[ind]==')') {
 					bracketCount--;
-				} else if (A[index]=='(') {
+				} else if (A[ind]=='(') {
 					bracketCount++;
 				}
-				index++;
+				ind++;
 			}
-			if (index < A.length()) {
-				string firstPart = A.substr(1, index-2);
-				if (A[index]=='*') {
-					if (index + 1 < A.length()) {
-						if (A[index+1] == '+') {
+			if (ind < A.length()) {
+				string firstPart = A.substr(1, ind-2);
+				if (A[ind]=='*') {
+					if (ind + 1 < A.length()) {
+						if (A[ind+1] == '+') {
 							newTree2 = new SyntaxTree('*', makeSyntaxTree(firstPart));
-							newTree = new SyntaxTree('+', newTree2, makeSyntaxTree(A.substr(index+2, -1)));
+							newTree = new SyntaxTree('+', newTree2, makeSyntaxTree(A.substr(ind+2, -1)));
 						} else {
 						    newTree2 = new SyntaxTree('*', makeSyntaxTree(firstPart));
-						    newTree = new SyntaxTree('.', newTree2, makeSyntaxTree(A.substr(index+1, -1)));
+						    newTree = new SyntaxTree('.', newTree2, makeSyntaxTree(A.substr(ind+1, -1)));
 						}
 					} else {
 						newTree = new SyntaxTree('*', makeSyntaxTree(firstPart));
 					}
-				} else if (A[index]=='+') {
-					newTree = new SyntaxTree('+', makeSyntaxTree(firstPart), makeSyntaxTree(A.substr(index+1, -1)));
+				} else if (A[ind]=='+') {
+					newTree = new SyntaxTree('+', makeSyntaxTree(firstPart), makeSyntaxTree(A.substr(ind+1, -1)));
 				} else {
-					newTree = new SyntaxTree('.', makeSyntaxTree(firstPart), makeSyntaxTree(A.substr(index, -1)));
+					newTree = new SyntaxTree('.', makeSyntaxTree(firstPart), makeSyntaxTree(A.substr(ind, -1)));
 				}
 				return newTree;
 			} else {
 				return makeSyntaxTree(A.substr(1, A.length()-2));
 			}
-		}
-		else {
-			while (index < A.length() - 1) { //this works because last symbol can't be ( or +
-				if (A[index] == '(') {
-					newTree = new SyntaxTree('.', makeSyntaxTree(A.substr(0, index)), makeSyntaxTree(A.substr(index, -1)));
+		} else {
+			while (ind < A.length() - 1) { //this works because last symbol can't be ( or +
+				if (A[ind] == '(') {
+					newTree = new SyntaxTree('.', makeSyntaxTree(A.substr(0, ind)), makeSyntaxTree(A.substr(ind, -1)));
 					return newTree;
-				} else if (A[index+1] == '+') {
-					newTree = new SyntaxTree('+', makeSyntaxTree(A.substr(0, index+1)), makeSyntaxTree(A.substr(index + 2, -1)));
+				} else if (A[ind] == '+') {
+					newTree = new SyntaxTree('+', makeSyntaxTree(A.substr(0, ind)), makeSyntaxTree(A.substr(ind + 1, -1)));
 					return newTree;
 				}
-				index ++;
+				ind ++;
 			}
 			if (A[1] == '*') {
-				newTree = new SyntaxTree('*', makeSyntaxTree(A.substr(0,1)), makeSyntaxTree(A.substr(2, -1)));
+				SyntaxTree * newTree2 = new SyntaxTree('*', makeSyntaxTree(A.substr(0,1)));
+				if (A.length() == 2) {
+					newTree = newTree2;
+				} else {
+					newTree = new SyntaxTree('.', newTree2, makeSyntaxTree(A.substr(2, -1)));
+				}
 			} else {
 				newTree = new SyntaxTree('.', makeSyntaxTree(A.substr(0,1)), makeSyntaxTree(A.substr(1, -1)));
 			}
@@ -114,49 +122,42 @@ SyntaxTree * makeSyntaxTree (string A) {
 		}
 	}
 }
-/*
+
 NFA * convertToNFA(SyntaxTree * expression) {
-	if (expression == NULL) {			//what about epsilons?
-		return NULL;
-	} else if (expression->getLeft == NULL) {
+	if (expression == nullptr) {			//what about epsilons?
+		return nullptr;
+	} else if (expression->getLeft() == nullptr) {
 		NFA * singleton = new NFA(expression->getOp());
 		return singleton;
 	} else {
-		return(convertToNFA(expression->getLeft())->combineNFAs(expression->getOp(), convertToNFA(expression->getRight())));
+		return combineNFAs(expression->getOp(), convertToNFA(expression->getLeft()), convertToNFA(expression->getRight()));
 	}
-}*/
+}
 
 string preprocess (string A) {  //removes spaces, closed bracket pairs and double stars
 	string newString = "";
-	int index = 0;
-	while (index < A.length()) {
-		if (A[index] != ' ') {
-			newString += A[index];
+	int ind = 0;
+	while (ind < A.length()) {
+		if (A[ind] != ' ') {
+			newString += A[ind];
 		}
-		index++;
+		ind++;
 	}
-	index = 1;
-	while (index < newString.length()) {
-		if (newString[index] == ')' && newString[index-1] == '(') {
-			newString.erase(newString.begin()+index);
-			newString.erase(newString.begin()+index-1);
-			index--;
-		} else if (newString[index] == '*' && newString[index-1] == '*') {
-			newString.erase(newString.begin()+index);
+	ind = 1;
+	while (ind < newString.length()) {
+		if (newString[ind] == ')' && newString[ind-1] == '(') {
+			newString.erase(newString.begin()+ind);
+			newString.erase(newString.begin()+ind-1);
+			ind--;
+		} else if (newString[ind] == '*' && newString[ind-1] == '*') {
+			newString.erase(newString.begin()+ind);
 		} else {
-			index++;
+			ind++;
 		}
 	}
-	cout << newString << endl;
 	return newString;
 }
 
 SyntaxTree * createTree (string A) {
 	return (makeSyntaxTree(preprocess(A)));
-}
-
-int main() {
-    SyntaxTree * hi1 = createTree("(he+llo)*+(hi)");
-    printSyntaxTree(hi1);
-	cout << endl;
 }
