@@ -3,12 +3,14 @@
 #include <tuple>
 #include <vector>
 #include <stack>
+#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 
 using namespace std;
 
 //TODO: change iterators to use auto; change functions to accept constant references; comment
+//TODO: add a simplify function
 
 class State {
 	//Class for states within automata
@@ -167,9 +169,64 @@ class NFA {
 	vector<State*> states;
 	State * startState;
 	vector<State*> finalStates;
-	unordered_set<char> alphabet = {'a','b','c','d','z'};
+	unordered_set<char> alphabet = {'a','b','c','d','e'};
 
 public:
+	
+	NFA(unordered_set<char> alpha) {
+		alphabet = alpha;
+		int howManyStates;
+		int start;
+		int currentFinState;
+		int originState;
+		int destState;
+		char letter;
+		vector<int> finStates;
+		vector<tuple<int,char,int>> transitions;
+		cout << "How many states? (they will be indexed starting from 0)" << endl;
+		cin >> howManyStates;
+		cout << "Which is the starting state?" << endl;
+		cin >> start;
+		cout << "Enter, one by one, all final states, or -1 to finish" << endl;
+		cin >> currentFinState;
+		while (currentFinState != -1) {
+			finStates.push_back(currentFinState);
+			cout << "Enter, one by one, all final states, or -1 to finish" << endl;
+			cin >> currentFinState;
+		}
+		cout << "Now enter each transition, or -1 to finish (use z for epsilon)." << endl;
+		cout << "Origin state: ";
+		cin >> originState;
+		while (originState != -1) {
+			cout << "Destination state: ";
+			cin >> destState;
+			cout << "Transition character: ";
+			cin >> letter;
+			transitions.push_back(make_tuple(originState, letter, destState));
+			cout << "Now enter another transition, or -1 to finish." << endl;
+			cout << "Origin state: ";
+			cin >> originState;
+		}
+		
+		State * temp = nullptr;
+		for (int i = 0; i < howManyStates; ++i) {
+			temp = new State(i);
+			states.push_back(temp);
+		}
+		startState = states[start];
+		for (auto i = finStates.begin(); i != finStates.end(); ++i) {
+			states[(*i)]->setFinal(true);
+			finalStates.push_back(states[(*i)]);
+		}
+		State * source = nullptr;
+		State * dest = nullptr;
+		for (auto i = transitions.begin(); i != transitions.end(); ++i) {
+			source = states[get<0>(*i)];
+			dest = states[get<2>(*i)];
+			source->addOutgoing(get<1>(*i), dest);
+			dest->addIncoming(get<1>(*i), source);
+		}
+	}
 	
 	NFA(int howManyStates, int start) {
 		State * temp = nullptr;
@@ -367,14 +424,8 @@ public:
 		finalStates = other->getFinalStates();
 	}
 	
-	void complement() { //requires all transitions defined, and all states which can reach a final state via epsilons to be set to final
-		removeUnreachableStates();
-		if (hasEpsilon()) {
-			expandFinals();			
-		}
-		
-		completeConnections();
-		vector<State*> newFinal;		
+	void complement() { //SHOULD ONLY BE CALLED ON DFAs
+		vector<State*> newFinal;
 		for (auto i = states.begin(); i != states.end(); ++i) {
 			if ((*i)->isFinal()) {
 				(*i)->setFinal(false);
@@ -407,32 +458,6 @@ public:
 		return addState(0, 0, null, null);
 	}
 	
-	void expandFinals() {
-		bool * linked = new bool[states.size()];
-		
-		stack<State*> store;
-		State * current = nullptr;
-		unordered_map<char, vector<State*>*> transitions;
-		for (auto i : finalStates) {
-			store.push(i);
-		}		
-		while (!store.empty()) {
-			current = store.top();
-			store.pop();
-			transitions = current->getIncoming();
-			if (transitions.count('z') != 0) {
-				for (auto i : (*transitions['z'])) {
-					if (!i->isFinal()) {
-						i->setFinal(true);
-						finalStates.push_back(i);
-						store.push(i);
-					}
-				}
-			}
-		}
-		delete linked;
-	}
-	
 	NFA * createIntersection(NFA * other) {
 		vector<State*> otherStates = other->getStates();
 		int m = states.size();
@@ -443,30 +468,9 @@ public:
 				finals.push_back(n*(*i)->getName() + (*j)->getName());
 			}
 		}
-		
 		return createPairwiseNFA(other, finals);
 	}
 	
-	NFA * createUnion(NFA * other) {
-		vector<State*> otherStates = other->getStates();
-		int m = states.size();
-		int n = otherStates.size();
-		vector <int> finals;
-		for (auto i = finalStates.begin(); i != finalStates.end(); ++i) {
-			for (auto j = otherStates.begin(); j != otherStates.end(); ++j) {
-				finals.push_back(n*(*i)->getName() + (*j)->getName());
-			}
-		}
-		for (auto j = other->finalStates.begin(); j != other->finalStates.end(); ++j) {
-			for (auto i = states.begin(); i != states.end(); ++i) {
-				if (!(*i)->isFinal()) {
-					finals.push_back(n*(*i)->getName() + (*j)->getName());
-				}
-			}
-		}
-		return createPairwiseNFA(other, finals);
-	}
-
 	NFA * createPairwiseNFA(NFA * other, vector<int> finals) {
 		vector<State*> otherStates = other->getStates();
 		int m = states.size();
@@ -476,24 +480,37 @@ public:
 		unordered_map<char,vector<State*>*> transitions1;
 		unordered_map<char,vector<State*>*> transitions2;
 		char c;
-		
-		for (auto i = states.begin(); i != states.end(); ++i) {
-			transitions1 = (*i)->getOutgoing();
-			for (auto j = otherStates.begin(); j != otherStates.end(); ++j) {
-				transitions2 = (*j)->getOutgoing();
-				for (auto k = transitions1.begin(); k != transitions1.end(); ++k) {
-					c = get<0>(*k);
-					if (transitions2.count(c) != 0) {
-						for (auto p = (get<1>(*k))->begin(); p != (get<1>(*k))->end(); ++p) {
-							for (auto q = transitions2[c]->begin(); q != transitions2[c]->end(); ++q) {
-								inters->addLink((*i)->getName()*n + (*j)->getName(), get<0>(*k), (*p)->getName()*n + (*q)->getName());
+
+		for (auto i : states) {
+			transitions1 = i->getOutgoing();
+			for (auto j : otherStates) {
+				transitions2 = j->getOutgoing();
+				for (auto k : transitions1) {
+					c = get<0>(k);
+					if (c=='z') {
+						for (auto p : (*get<1>(k))) {
+							inters->addLink(n*i->getName() + j->getName(), c, n* p->getName() + j->getName());
+						}
+					}
+					else if (transitions2.count(c) != 0) {
+						for (auto p : (*get<1>(k))) {
+							for (auto q : (*transitions2[c])) {
+								inters->addLink(n*i->getName() + j->getName(), c, n* p->getName() + q->getName());
 							}
+						}
+					}
+				}
+				for (auto k : transitions2) {
+					c = get<0>(k);
+					if (c=='z') {
+						for (auto q : (*get<1>(k))) {
+							inters->addLink(n*i->getName() + j->getName(), c, n* i->getName() + q->getName());
 						}
 					}
 				}
 			}
 		}
-		
+
 		inters->removeUnreachableStates();
 		return inters;
 	}
@@ -520,9 +537,7 @@ public:
 	}
 	
 	void removeLinks(State* current) {
-		
 		unordered_map<char, vector<State*>*> transitions = current->getOutgoing();
-		
 		for (auto i = transitions.begin(); i != transitions.end(); ++i) {
 			for (auto j = get<1>(*i)->begin(); j != get<1>(*i)->end(); ++j) {
 				(*j)->removeIncoming(get<0>(*i), current);
@@ -538,25 +553,61 @@ public:
 	
 	void removeState(State* current) { //consider case where deleting start state!
 		removeLinks(current);
-		for (int i = 0; i < states.size(); ++i) {
-			if (states[i] == current) {
-				states[i] = states[states.size() - 1];
-				states[i]->setName(i);
-				states.erase(states.begin() + states.size() - 1);
-				return;
-			}
-		}
+		states[current->getName()] = states[states.size() - 1];
+		states[current->getName()]->setName(current->getName());
+		states.erase(states.begin() + states.size() - 1);
+		
 		if (current->isFinal()) {
 			for (auto i = finalStates.begin(); i != states.end(); ++i) {
 				if ((*i) == current) {
 					states.erase(i);
-					return;
 				}
 			}
 		}
 		delete current;
 	}
-	
+
+	string exampleAccepted() {
+		bool * explored = new bool[states.size()];
+		for (int i = 0; i < states.size(); ++i) {
+			explored[i] = 0;
+		}
+		string path = "";
+		queue<tuple<State*, string>> store;
+		State * current = nullptr;
+		store.push(make_tuple(startState, path));
+		explored[startState->getName()] = 1;
+		if (startState->isFinal()) {
+			return ("z");
+		}
+		unordered_map<char, vector<State*>*> transitions;
+		
+		while (!store.empty()) {
+			current = get<0>(store.front());
+			path = get<1>(store.front());
+			store.pop();
+			transitions = current->getOutgoing();
+			for (auto i : transitions) {
+				for (auto j : (*get<1>(i))) {
+					if (explored[j->getName()] == 0) {
+						if (j->isFinal()) {
+							return (path + get<0>(i));
+						} else {
+							if (get<0>(i) == 'z') {
+								store.push(make_tuple(j, path));
+							} else {
+								store.push(make_tuple(j, path + get<0>(i)));
+							}
+							explored[j->getName()] = 1;
+						}
+					}
+				}
+			}
+		}
+		cout << "This shouldn't happen" << endl;
+		return "";
+	}
+
 	void removeUnreachableStates() {
 		bool * linked = new bool[states.size()];
 		for (int i = 0; i < states.size(); ++i) {
@@ -620,8 +671,7 @@ public:
 			}
 		}
 		finalStates = tempFinal;
-		delete linked;
-		cout << "Removed " << numUnlinked << " unreachable states." << endl;
+		delete[] linked;
 	}
 
 	void print() {
@@ -654,7 +704,6 @@ public:
 	}
 	
 	bool evaluate (string s, State * start) {
-		//cout << "Evaluating string " << s << " from state " << start->getName() << endl;
 		if (s.empty()) {
 			for (auto i : getReachable(start, 'z')) {
 				if (i->isFinal()) {
@@ -714,12 +763,6 @@ NFA * getStar(NFA * first) {
 	return output;
 }
 
-NFA * getComplement(NFA * first) {
-	NFA * output = new NFA(*first);
-	output->complement();
-	return output;
-}
-
 NFA * combineWithPlus(NFA * first, NFA * second) {
 	NFA * output = new NFA(*first);
 	NFA * discard = new NFA(*second);
@@ -738,10 +781,6 @@ NFA * combineWithConcat(NFA * first, NFA * second) {
 
 NFA * combineWithIntersection(NFA * first, NFA * second) {
 	return first->createIntersection(second);
-}
-
-NFA * combineWithUnion(NFA * first, NFA * second) {
-	return first->createUnion(second);
 }
 
 int toInt(bool * current, int length) { //fix: this would be quicker with bit operations, but idk about unsigned vs signed ints
@@ -789,7 +828,6 @@ NFA * createDFA(NFA * first) {
 	NFA * output;
 	if (!first->hasEpsilon() && !first->hasMulti()) { //checks if it's already essentially a DFA
 		output = new NFA(*first);
-		output->removeUnreachableStates(); //for simplicity
 		output->completeConnections(); //adds all connections to make it explicitly a DFA
 	} else {
 		int length = first->getStates().size(); //
@@ -834,19 +872,47 @@ NFA * createDFA(NFA * first) {
 				}
 			}
 		}
-		delete current;
-		delete nextStep;
+		delete[] current;
+		delete[] nextStep;
 		output->removeUnreachableStates();
 	}
 	return output;
 }
 
+NFA * getComplement(NFA * first) {
+	NFA * output = createDFA(first);
+	output->complement();
+	return output;
+}
+
 bool checkEquivalence(NFA * first, NFA * second) {
-	NFA * temp = combineWithIntersection(getComplement(first), second);
-	NFA * temp2 = combineWithIntersection(getComplement(second), first);
-	NFA * temp3 = combineWithUnion(temp, temp2);
-	temp3->removeUnreachableStates();
-	return (temp3->getFinalStates().size() == 0);
+	NFA * smaller;
+	NFA * bigger;
+	if (first->getStates().size() < second->getStates().size()) {	//makes sure the exponential code doesn't run unnecessarily
+		smaller = first;
+		bigger = second;
+	} else {
+		smaller = second;
+		bigger = first;
+	}
+	NFA * temp2 = getComplement(smaller);
+	temp2 = combineWithIntersection(temp2, bigger);
+	temp2->removeUnreachableStates();
+	if (temp2->getFinalStates().size()!=0) {
+		cout << "These are not equivalent." << endl;
+		cout << "Example failure: " << temp2->exampleAccepted() << endl;
+		return false;
+	}
+	temp2 = getComplement(bigger);
+	temp2 = combineWithIntersection(temp2, smaller);
+	temp2->removeUnreachableStates();
+	if (temp2->getFinalStates().size()!=0) {
+		cout << "These are not equivalent." << endl;
+		cout << "Example failure: " << temp2->exampleAccepted() << endl;
+		return false;
+	}
+	cout << "These are equivalent." << endl;
+	return true;
 }
 
 NFA * combineNFAs(char op, NFA * first, NFA * second) {
@@ -859,11 +925,4 @@ NFA * combineNFAs(char op, NFA * first, NFA * second) {
 	} else {
 		return nullptr;
 	}
-}
-	
-int main() {
-	int first = 2;
-	vector<int> second = {0, 1, 2, 4};
-	vector<tuple<int,char, int>> third = {make_tuple(1,'c',2),make_tuple(0,'a', 3), make_tuple(1,'d', 1), make_tuple(3,'d', 4), make_tuple(2,'f',3), make_tuple(0,'g',4), make_tuple(3,'b',1)};
-	NFA * myD = new NFA(5, first,second,third);
 }
