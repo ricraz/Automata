@@ -6,11 +6,12 @@
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
+#include <algorithm>
 
 using namespace std;
 
 //TODO: change iterators to use auto; change functions to accept constant references; comment
-//TODO: add a simplify function
 
 class State {
 	//Class for states within automata
@@ -26,14 +27,14 @@ public:
 	}
 	
 	~State() {
-		for (auto i : outgoing) {
-			delete get<1>(i);
+		for (auto i = outgoing.begin(); i != outgoing.end();++i) {
+			delete get<1>(*i);
 		}
-		for (auto i : incoming) {
-			delete get<1>(i);
+		for (auto i = incoming.begin(); i != incoming.end(); ++i) {
+			delete get<1>(*i);
 		}
 	}
-	
+
 	int getName() {
 		return name;
 	}
@@ -90,7 +91,6 @@ public:
 		}
 	}
 	
-	
 	void replaceIncoming(char c, State* s) { //replaces any other c-links
 		vector<State*> * temp = new vector<State*>;
 		temp->push_back(s);
@@ -129,40 +129,33 @@ public:
 	}
 
 	void removeOutgoing(char c, State* s) {
-		for (auto i = outgoing[c]->begin(); i != outgoing[c]->end(); ++i) {
-			if ((*i) == s) {
-				outgoing[c]->erase(i);
-				if (outgoing[c]->size() == 0) {
-					outgoing.erase(c);
-				}
-				return;
-			}
-		}
+		(*outgoing[c]).erase(remove((*outgoing[c]).begin(), (*outgoing[c]).end(), s), (*outgoing[c]).end());
 	}
 
 	void removeIncoming(char c, State* s) {
-		for (auto i = incoming[c]->begin(); i != incoming[c]->end(); ++i) {
-			if ((*i) == s) {
-				incoming[c]->erase(i);
-				if (incoming[c]->size() == 0) {
-					incoming.erase(c);
-				}
-				return;
-			}
-		}
+		(*incoming[c]).erase(remove((*incoming[c]).begin(), (*incoming[c]).end(), s), (*incoming[c]).end());
 	}
 
 	void printOutgoing() {
-		char c;
-		vector<State*> * current;
-		for (auto i = outgoing.begin(); i != outgoing.end(); ++i) {
+		char c;		
+		for (auto i = outgoing.begin(); i!= outgoing.end(); ++i) {
 			c = get<0>(*i);
-			current = get<1>(*i);
-			for (auto j = current->begin(); j != current->end(); ++j) {
-				cout << "State " << name << " links to state " << (*j)->getName() << " with " << c << endl;
+			for (auto j = (*get<1>(*i)).begin(); j!=(*get<1>(*i)).end(); ++j) {
+				cout << "State " << name << " links to state " << (*j)->getName() << " " << *j << " with " << c << endl;
 			}
 		}
 	}
+	
+	void printIncoming() {
+		char c;
+		for (auto i : incoming) {
+			c = get<0>(i);
+			for (auto j : *get<1>(i)) {
+				cout << "State " << j->getName() << ": " << j << " links to state " << name << " with " << c << endl;
+			}
+		}
+	}
+	
 };
 
 class NFA {
@@ -308,6 +301,18 @@ public:
 				tempOutgoing[c] = tempVec;
 			}
 			i->setOutgoing(tempOutgoing);
+			
+			unordered_map<char, vector<State*>*> tempIncoming;
+			for (auto j : i->getIncoming()) {
+				char c = get<0>(j);
+				vector<State*> * tempVec = new vector<State*>;
+				for (auto k : *(get<1>(j))) {
+					tempVec->push_back(states[k->getName()]);
+				}
+				tempIncoming[c] = tempVec;
+			}
+			i->setIncoming(tempIncoming);
+			
 		}
 	}
 	
@@ -348,6 +353,16 @@ public:
 	void addLink(int source, char c, int dest) {
 		states[source]->addOutgoing(c, states[dest]);
 		states[dest]->addIncoming(c, states[source]);
+	}
+	
+	void removeLink(State* source, char c, State* dest) {
+		source->removeOutgoing(c, dest);
+		dest->removeIncoming(c, source);
+	}
+	
+	void removeLink(int source, char c, int dest) {
+		states[source]->removeOutgoing(c, states[dest]);
+		states[dest]->removeIncoming(c, states[source]);
 	}
 	
 	State * addState(bool start, bool final, vector<tuple<char,int>> out, vector<tuple<char,int>> in) {
@@ -475,12 +490,10 @@ public:
 		vector<State*> otherStates = other->getStates();
 		int m = states.size();
 		int n = otherStates.size();
-		
 		NFA * inters = new NFA(m*n, (n * startState->getName()) + other->getStartState()->getName(), finals);
 		unordered_map<char,vector<State*>*> transitions1;
 		unordered_map<char,vector<State*>*> transitions2;
 		char c;
-
 		for (auto i : states) {
 			transitions1 = i->getOutgoing();
 			for (auto j : otherStates) {
@@ -512,7 +525,62 @@ public:
 		}
 
 		inters->removeUnreachableStates();
+		
 		return inters;
+	}
+	
+	bool isLinear(State * state, char c) {
+		unordered_map<char,vector<State*>*> transitions = state->getIncoming();
+		if (transitions.count(c)!=1) {
+			return false;
+		}
+		for (auto i : transitions) {
+			if (get<0>(i) == c) {
+				if ((*get<1>(i)).size() != 1) {
+					return false;
+				}
+			} else {
+				if ((*get<1>(i)).size() != 0) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+	
+	void simplify() {
+		set<State*> store;
+		bool changed = false;
+		for (auto i : states) {
+			if (isLinear(i, 'z') && i!=startState) {
+				store.insert(i);
+				changed = true;
+			}
+		}
+		for (auto i : store) {
+			collapse(i);
+		}
+		if (changed) {
+			removeUnreachableStates();
+		}
+	}
+	
+	void collapse(State * second) {
+		State * origin = (*((second->getIncoming())['z'])).front();
+		unordered_map<char,vector<State*>*> transitions = second->getOutgoing();
+		for (auto i : transitions) {
+			for (auto j : (*(get<1>(i)))) {
+				addLink(origin, get<0>(i), j);
+				removeLink(second, get<0>(i), j);
+			}
+		}
+		removeLink(origin, 'z', second);
+		if (second->isFinal() && !origin->isFinal()) {
+			origin->setFinal(true);
+			finalStates.push_back(origin);
+		}
+		second->printOutgoing();
+		//removeState(second);
 	}
 	
 	bool hasEpsilon() {
@@ -553,17 +621,21 @@ public:
 	
 	void removeState(State* current) { //consider case where deleting start state!
 		removeLinks(current);
+		current->printOutgoing();
 		states[current->getName()] = states[states.size() - 1];
 		states[current->getName()]->setName(current->getName());
 		states.erase(states.begin() + states.size() - 1);
-		
-		if (current->isFinal()) {
-			for (auto i = finalStates.begin(); i != states.end(); ++i) {
+		current->printOutgoing();
+		if (current->isFinal()) {	//check to make sure this isn't dodgy
+			for (auto i = finalStates.begin(); i != states.end();) {
 				if ((*i) == current) {
 					states.erase(i);
+				} else {
+					++i;
 				}
 			}
 		}
+		current->printOutgoing();
 		delete current;
 	}
 
@@ -661,8 +733,9 @@ public:
 			removeLinks(states[states.size()-1-i]);
 		}
 		for (int i = 0; i < numUnlinked; ++i) {
-			delete states[states.size()-1];
+			temp = states[states.size()-1];
 			states.erase(states.end()-1);
+			delete temp;
 		}
 		vector<State*> tempFinal;
 		for (auto i = states.begin(); i != states.end(); i++) {
@@ -672,6 +745,7 @@ public:
 		}
 		finalStates = tempFinal;
 		delete[] linked;
+		simplify();
 	}
 
 	void print() {
@@ -757,28 +831,6 @@ public:
 	}
 };
 
-NFA * getStar(NFA * first) {
-	NFA * output = new NFA(*first);
-	output->star();
-	return output;
-}
-
-NFA * combineWithPlus(NFA * first, NFA * second) {
-	NFA * output = new NFA(*first);
-	NFA * discard = new NFA(*second);
-	output->plus(discard);
-	delete discard;
-	return output;
-}
-
-NFA * combineWithConcat(NFA * first, NFA * second) {
-	NFA * output = new NFA(*first);
-	NFA * discard = new NFA(*second);
-	output->concat(discard);
-	delete discard;
-	return output;
-}
-
 NFA * combineWithIntersection(NFA * first, NFA * second) {
 	return first->createIntersection(second);
 }
@@ -803,7 +855,7 @@ void toArray(int now, bool * current, int length) { //look up bitwise
 	}
 }
 
-void getNext(bool * current, bool * nextStep, int length, NFA * first, char c) {
+void getNextStateSet(bool * current, bool * nextStep, int length, NFA * first, char c) {
 	for (int i = 0; i < length; ++i) {
 		nextStep[i] = 0;
 	}
@@ -818,7 +870,7 @@ void getNext(bool * current, bool * nextStep, int length, NFA * first, char c) {
 	}
 }
 
-void createLink(bool * current, bool * nextStep, int length, char c, NFA * first, NFA * output) {
+void createStateSetLink(bool * current, bool * nextStep, int length, char c, NFA * first, NFA * output) {
 	State * source = output->getStates()[toInt(current, length)];
 	State * dest = output->getStates()[toInt(nextStep, length)];
 	output->addLink(source, c, dest);
@@ -865,8 +917,8 @@ NFA * createDFA(NFA * first) {
 				toArray(now, current, length);
 				for (auto i : first->getAlphabet()) {
 					if (i != 'z') {
-						getNext(current, nextStep, length, first, i);
-						createLink(current, nextStep, length, i, first, output);
+						getNextStateSet(current, nextStep, length, first, i);
+						createStateSetLink(current, nextStep, length, i, first, output);
 						store.push(toInt(nextStep, length));
 					}
 				}
@@ -896,33 +948,53 @@ bool checkEquivalence(NFA * first, NFA * second) {
 		bigger = first;
 	}
 	NFA * temp2 = getComplement(smaller);
-	temp2 = combineWithIntersection(temp2, bigger);
-	temp2->removeUnreachableStates();
-	if (temp2->getFinalStates().size()!=0) {
+	NFA * temp3 = combineWithIntersection(temp2, bigger);
+	temp2->deleteStates();
+	delete temp2;
+	
+	temp3->removeUnreachableStates();
+	
+	if (temp3->getFinalStates().size()!=0) {
 		cout << "These are not equivalent." << endl;
-		cout << "Example failure: " << temp2->exampleAccepted() << endl;
+		cout << "Example failure: " << temp3->exampleAccepted() << endl;
+		temp3->deleteStates();
+		delete temp3;
 		return false;
 	}
-	temp2 = getComplement(bigger);
-	temp2 = combineWithIntersection(temp2, smaller);
-	temp2->removeUnreachableStates();
-	if (temp2->getFinalStates().size()!=0) {
+	
+	temp3->deleteStates();
+	delete temp3;
+	
+	NFA * temp4 = getComplement(bigger);
+	NFA * temp5 = combineWithIntersection(temp4, smaller);
+	temp5->removeUnreachableStates();
+	
+	temp4->deleteStates();
+	delete temp4;
+	
+	if (temp5->getFinalStates().size()!=0) {
 		cout << "These are not equivalent." << endl;
-		cout << "Example failure: " << temp2->exampleAccepted() << endl;
+		cout << "Example failure: " << temp5->exampleAccepted() << endl;
+		temp5->deleteStates();
+		delete temp5;
 		return false;
 	}
 	cout << "These are equivalent." << endl;
+	
+	temp5->deleteStates();
+	delete temp5;
 	return true;
 }
 
 NFA * combineNFAs(char op, NFA * first, NFA * second) {
 	if (op == '*') {
-		return getStar(first);
+		first->star();
 	} else if (op == '+') {
-		return combineWithPlus(first, second);
+		first->plus(second);
+		delete second;
 	} else if (op == '.') {
-		return combineWithConcat(first, second);
-	} else {
-		return nullptr;
+		first->concat(second);
+		delete second;
 	}
+	return first;
 }
