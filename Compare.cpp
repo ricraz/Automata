@@ -13,6 +13,8 @@ int main() {
 	unordered_set<char> alphabet;
 	int states;
 	vector<tuple<State*, char, State*>> transitions;
+	bool repeat = true;
+	
 	cout << "This program checks two finite automata or regular expressions for equality." << endl;
 	cout << "Epsilon is represented by z, star by *, concatenation by . and union by +" << endl;
 	cout << "What is the alphabet? Enter a list of letters and/or single digits:";
@@ -27,7 +29,7 @@ int main() {
 		cout << i <<  " ";
 	}
 	cout << endl;
-	
+	while (repeat) {
 	cout << "1st entry: Finite Automaton (F) or Regular Expression (R)?" << endl;
     getline(cin, input);
 	while (input != "F" && input != "R") {
@@ -66,4 +68,21 @@ int main() {
 	comp2->removeUnreachableStates();
 	
 	checkEquivalence(comp1, comp2);
+	comp1->deleteStates();
+	comp2->deleteStates();
+	delete comp1;
+	delete comp2;
+	
+	cout << "Compare another pair? Y/N" << endl;
+	getline(cin, input);
+	while (input != "Y" && input != "N") {
+		cout << "Please enter Y or N" << endl;
+		getline(cin, input);
+	}
+	if (input == "Y") {
+		repeat = true;
+	} else {
+		repeat = false;
+	}
+	}	
 }
